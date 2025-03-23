@@ -135,9 +135,7 @@ for epoch in range(num_epochs):
     print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {epoch_loss:.4f}, Accuracy: {acc:.4f}")
 
 
-# # ------------------------------
-# # 🎯 Save Model
-# # ------------------------------
+# save model
 # model_path = os.path.join(os.getcwd(), "results", "gcn_model.pth")
 # torch.save(model.state_dict(), model_path)
 # print(f"Model saved at {model_path}")
