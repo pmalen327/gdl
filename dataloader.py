@@ -3,6 +3,7 @@ from torch.utils.data import Dataset, DataLoader
 import h5py
 import numpy as np
 import os
+import networkx as nx
 from dotenv import load_dotenv
 from torchvision import transforms
 
@@ -29,7 +30,7 @@ class MRI_Dataset(Dataset):
         # check if image_data has the correct shape then send to tensor
         
         image_data = image_data[0]  # Remove the batch dimension, resulting in shape (240, 240, 4)
-        image_data = torch.tensor(image_data, dtype=torch.float32)
+        image_data = torch.from_numpy(image_data).float()
 
         if image_data.ndimension() == 2:
             image_data = image_data.unsqueeze(0)
@@ -38,9 +39,9 @@ class MRI_Dataset(Dataset):
         
 
         # check if mask_data has the correct shape then send to tensor
-        mask_data = torch.tensor(mask_data, dtype=torch.float32)
+        mask_data = torch.from_numpy(mask_data).float()
         mask_data = mask_data[0]  # remove the batch dimension, resulting in shape (240, 240, 3)
-        mask_data = torch.tensor(mask_data, dtype=torch.long)
+        mask_data = mask_data.long()
 
         # apply transformations if any
         if self.transform:
@@ -60,10 +61,45 @@ transform = transforms.Compose([
 dataset = MRI_Dataset(data_dir=data_dir, transform=transform)
 dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
 
-for batch in dataloader:
-    images = batch['image']
-    masks = batch['mask']
-    # will address shape mismatch in model
-    print(f'Batch image shape: {images.shape}')
-    print(f'Batch mask shape: {masks.shape}')
-    break
+# for batch in dataloader:
+#     images = batch['image']
+#     masks = batch['mask']
+#     # will address shape mismatch in model
+#     print(f'Batch image shape: {images.shape}')
+#     print(f'Batch mask shape: {masks.shape}')
+#     break
+
+# convert MRI slice to graph representation
+def mri_to_graph(mri_slice, connectivity=4):
+    """
+    Convert an MRI slice to a graph.
+
+    Args:
+        mri_slice (np.array): Shape (240, 240, 4), an individual MRI slice.
+        connectivity (int): 4 or 8 for grid graph connectivity.
+
+    Returns:
+        adj (csr_matrix): Sparse adjacency matrix.
+        features (torch.Tensor): Node features as tensor of shape [N, 4].
+    """
+    height, width, channels = mri_slice.shape
+    G = nx.grid_2d_graph(height,width)
+
+    # if we want 8-connectivity, add diagonal edges
+    if connectivity == 8:
+        G.add_edges_from([
+            ((i, j), (i + di, j + dj))
+            for i in range(height-1) for j in range(width)
+            for di, dj in [(-1, -1), (-1, 1), (1, -1), (1, 1)]
+            if 0 <= i + di < height and 0 <= j + dj < width
+        ])
+
+    # flatten the 2D grid to 1D node list
+    features = mri_slice.reshape(-1, channels)
+
+    # create adjacency matrix as sparse matrix
+    adj = nx.to_scipy_sparse_array(G, format='csr')
+
+    # return adjacency matrix and node features as tensor
+    features = torch.tensor(features, dtype=torch.float32)
+    return adj, features
